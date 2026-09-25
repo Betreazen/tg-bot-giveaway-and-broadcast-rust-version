@@ -8,6 +8,7 @@ use crate::{
     verification::{self, MAX_ATTEMPTS, TIMEOUT},
 };
 use anyhow::Result;
+use rand::seq::SliceRandom;
 use teloxide::{prelude::*, types::ChatMemberKind};
 
 pub async fn start(bot: &Bot, app: &App, msg: &Message, user: i64) -> Result<()> {
@@ -171,7 +172,7 @@ async fn wrong_answer(cb: &Cb<'_>, mut state: Verification) -> Result<()> {
         );
         return cb.edit(&t("user.verification_blocked", &[]), None).await;
     }
-    verification::shuffle(&mut state.numbers, &mut rand::rng());
+    state.numbers.shuffle(&mut rand::rng());
     let keyboard = verification::keyboard(&state.numbers);
     let text = t(
         "user.verification_wrong",

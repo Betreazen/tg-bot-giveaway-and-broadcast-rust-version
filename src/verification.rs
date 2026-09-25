@@ -1,5 +1,5 @@
 //! Anti-bot check before joining: press the button with the shown digit.
-use rand::{Rng, seq::SliceRandom};
+use rand::Rng;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup};
 
 /// Seconds a verification stays valid.
@@ -15,10 +15,6 @@ pub fn numbers(rng: &mut impl Rng) -> (u8, Vec<u8>) {
         .collect();
     let correct = numbers[rng.random_range(0..numbers.len())];
     (correct, numbers)
-}
-
-pub fn shuffle(numbers: &mut [u8], rng: &mut impl Rng) {
-    numbers.shuffle(rng);
 }
 
 /// Row of three and row of two, `verify:<digit>`.

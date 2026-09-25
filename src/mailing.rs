@@ -160,7 +160,7 @@ async fn recipients(db: &Database, mailing: &Mailing, after: Option<i64>) -> Res
 }
 
 /// Final texts are the Python bot's, word for word.
-pub fn report_text(mailing: &Mailing) -> String {
+fn report_text(mailing: &Mailing) -> String {
     let delivered = mailing.sent + i64::from(mailing.channel_sent);
     match mailing.kind {
         MailingKind::Broadcast => {
