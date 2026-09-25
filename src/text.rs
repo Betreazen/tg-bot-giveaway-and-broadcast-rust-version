@@ -71,3 +71,24 @@ pub fn t(key: &str, args: &[(&str, &dyn Display)]) -> String {
     }
     text
 }
+
+/// Header plus lines split into messages of at most `limit` characters (Python `_paginate`).
+pub fn paginate(header: &str, lines: &[String], limit: usize) -> Vec<String> {
+    let mut pages = Vec::new();
+    let mut current = header.to_owned();
+    for line in lines {
+        if current.chars().count() + line.chars().count() + 1 > limit {
+            pages.push(current.trim_end().to_owned());
+            current.clear();
+        }
+        current.push_str(line);
+        current.push('\n');
+    }
+    if !current.trim().is_empty() {
+        pages.push(current.trim_end().to_owned());
+    }
+    if pages.is_empty() {
+        pages.push(header.trim_end().to_owned());
+    }
+    pages
+}

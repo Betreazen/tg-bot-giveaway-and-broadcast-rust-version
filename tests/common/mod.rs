@@ -17,7 +17,8 @@ pub fn config(dir: &std::path::Path) -> Config {
                 "ADMIN_IDS" => "99,98",
                 "CHANNEL_ID" => "-100500",
                 "JOIN_URL" => JOIN_URL,
-                "BROADCAST_RPS" | "ANNOUNCE_RPS" => "1000",
+                "BROADCAST_RPS" => "1000",
+                "ANNOUNCE_RPS" => "999",
                 "MAX_RETRIES" => "2",
                 _ => return None,
             }
@@ -176,6 +177,8 @@ pub fn media(user: i64, kind: &str, caption: Option<&str>) -> Message {
             item["width"] = json!(1);
             item["height"] = json!(1);
             item["duration"] = json!(1);
+            // teloxide requires the field although the Bot API marks it optional.
+            item["mime_type"] = json!("video/mp4");
             if kind == "animation" {
                 value["document"] = file(kind);
             }
