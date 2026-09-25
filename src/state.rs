@@ -11,17 +11,8 @@ pub struct Media {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "state")]
 pub enum Dialogue {
-    /// Waiting for the correct digit button; the snapshot mirrors Python's FSM data.
-    Verify {
-        correct: u8,
-        numbers: Vec<u8>,
-        created_at: i64,
-        giveaway_id: i64,
-        username: String,
-        end_at: String,
-        description: String,
-        num_winners: i64,
-    },
+    /// Waiting for the correct digit button.
+    Verify(Verification),
     Giveaway {
         step: GwStep,
         draft: GwDraft,
@@ -82,4 +73,18 @@ pub enum WinStep {
     ConfirmEnd,
     Select,
     Publish,
+}
+
+/// Pending verification; the giveaway snapshot mirrors Python's FSM data.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Verification {
+    pub correct: u8,
+    pub numbers: Vec<u8>,
+    /// Unix seconds.
+    pub created_at: i64,
+    pub giveaway_id: i64,
+    pub username: String,
+    pub end_at: String,
+    pub description: String,
+    pub num_winners: i64,
 }

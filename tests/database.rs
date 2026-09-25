@@ -1,7 +1,7 @@
 use chrono::{Duration, TimeZone, Utc};
 use tg_bot_giveaway_and_broadcast::{
     db::{Database, NewGiveaway},
-    state::{BcDraft, BcStep, Dialogue, GwDraft, GwStep, Media, WinStep},
+    state::{BcDraft, BcStep, Dialogue, GwDraft, GwStep, Media, Verification, WinStep},
     time::Time,
 };
 
@@ -157,7 +157,7 @@ async fn verification_attempts_are_per_giveaway_and_persistent() {
 async fn dialogues_round_trip_and_clear() {
     let (_dir, db) = open().await;
     let states = [
-        Dialogue::Verify {
+        Dialogue::Verify(Verification {
             correct: 3,
             numbers: vec![1, 2, 3, 4, 5],
             created_at: 100,
@@ -166,7 +166,7 @@ async fn dialogues_round_trip_and_clear() {
             end_at: "2026-01-01T00:00:00.000000Z".into(),
             description: "desc".into(),
             num_winners: 2,
-        },
+        }),
         Dialogue::Giveaway {
             step: GwStep::Preview,
             draft: GwDraft {

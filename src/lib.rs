@@ -1,5 +1,6 @@
 pub mod config;
 pub mod db;
+pub mod handlers;
 pub mod import;
 pub mod mailing;
 pub mod network;
@@ -8,3 +9,4 @@ pub mod state;
 pub mod text;
 pub mod time;
 pub mod usernames;
+pub mod verification;
