@@ -80,7 +80,7 @@ async fn suspicious_lookup_is_case_insensitive_and_listed_in_python_order() {
 // A user without username can only become suspicious through imported data.
 async fn sqlx_mark_null_username_suspicious(db: &Database, user_id: i64) {
     exec(
-        &db,
+        db,
         "UPDATE users SET is_suspicious=1 WHERE user_id=?",
         user_id,
     )
