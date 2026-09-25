@@ -1,6 +1,7 @@
 pub mod config;
 pub mod db;
 pub mod handlers;
+pub mod health;
 pub mod import;
 pub mod mailing;
 pub mod network;

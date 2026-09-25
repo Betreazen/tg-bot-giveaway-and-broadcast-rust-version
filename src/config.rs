@@ -1,6 +1,17 @@
 use anyhow::{Context, Result, bail, ensure};
 use std::path::PathBuf;
 
+const DEFAULT_DATA_DIR: &str = "/var/lib/tg-bot-giveaway-and-broadcast";
+
+/// `DATA_DIR` alone, for commands that need no bot credentials (`--healthcheck`, `import`).
+pub fn data_dir_from_env() -> PathBuf {
+    std::env::var("DATA_DIR")
+        .ok()
+        .map(|dir| dir.trim().to_owned())
+        .filter(|dir| !dir.is_empty())
+        .map_or_else(|| DEFAULT_DATA_DIR.into(), PathBuf::from)
+}
+
 // Deliberately no Debug: the configuration owns the bot token.
 pub struct Config {
     pub token: String,
@@ -39,6 +50,7 @@ impl Config {
             ensure!(n >= min, "{key} must be at least {min}");
             Ok(n)
         };
+        let token = required("BOT_TOKEN")?;
         let admin_ids = required("ADMIN_IDS")?
             .split(',')
             .map(str::trim)
@@ -47,7 +59,7 @@ impl Config {
             .collect::<Result<Vec<_>>>()?;
         ensure!(!admin_ids.is_empty(), "ADMIN_IDS is required");
         Ok(Self {
-            token: required("BOT_TOKEN")?,
+            token,
             admin_ids,
             channel_id: required("CHANNEL_ID")?
                 .parse()
@@ -60,9 +72,7 @@ impl Config {
             google_credentials_path: value("GOOGLE_CREDENTIALS_PATH").map(PathBuf::from),
             spreadsheet_id: value("SPREADSHEET_ID"),
             log_level: value("LOG_LEVEL").unwrap_or_else(|| "INFO".into()),
-            data_dir: value("DATA_DIR")
-                .unwrap_or_else(|| "/var/lib/tg-bot-giveaway-and-broadcast".into())
-                .into(),
+            data_dir: value("DATA_DIR").map_or_else(|| DEFAULT_DATA_DIR.into(), PathBuf::from),
         })
     }
 

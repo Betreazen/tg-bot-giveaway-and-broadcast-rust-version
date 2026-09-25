@@ -1,0 +1,55 @@
+[Unit]
+Description=Telegram giveaway and broadcast bot (Rust)
+Documentation=https://github.com/Betreazen/tg-bot-giveaway-and-broadcast-rust-version
+Wants=network-online.target
+After=network-online.target
+# Keep retrying after long network outages instead of giving up.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=tg-bot-giveaway-and-broadcast
+Group=tg-bot-giveaway-and-broadcast
+WorkingDirectory=/opt/tg-bot-giveaway-and-broadcast
+# BOT_TOKEN, ADMIN_IDS, CHANNEL_ID, JOIN_URL and optional settings; mode 0600, owned by root.
+EnvironmentFile=/etc/tg-bot-giveaway-and-broadcast/bot.env
+Environment=DATA_DIR=/var/lib/tg-bot-giveaway-and-broadcast
+# journald stores plain text; ANSI colors would show up as escape codes.
+Environment=NO_COLOR=1
+ExecStart=/opt/tg-bot-giveaway-and-broadcast/bot
+Restart=always
+RestartSec=5
+# The bot drains in-flight updates for up to 30 s after SIGTERM.
+TimeoutStopSec=40
+StateDirectory=tg-bot-giveaway-and-broadcast
+StateDirectoryMode=0700
+UMask=0077
+
+# Starting limits; adjust after measuring your load.
+MemoryMax=128M
+CPUQuota=50%
+TasksMax=64
+
+# The bot only needs outbound HTTPS, its data directory and read access to /etc/<name>.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

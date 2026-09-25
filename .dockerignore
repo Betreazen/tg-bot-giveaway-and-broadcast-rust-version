@@ -1,0 +1,9 @@
+target/
+dist/
+data/
+.git/
+.claude/
+.env
+*.db*
+service_account.json
+docs/

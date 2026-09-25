@@ -7,6 +7,7 @@ use crate::{
     time::fmt_msk,
 };
 use anyhow::Result;
+use rand::{SeedableRng, rngs::StdRng};
 
 async fn save(cb: &Cb<'_>, step: WinStep, giveaway_id: i64) -> Result<()> {
     let dialogue = Dialogue::Winners { step, giveaway_id };
@@ -66,7 +67,9 @@ async fn draw(cb: &Cb<'_>, giveaway_id: i64) -> Result<()> {
     let Some(giveaway) = cb.app.db.giveaway(giveaway_id).await? else {
         return stop(cb, "❌ Розыгрыш не найден").await;
     };
-    let winners = match cb.app.db.draw_winners(&giveaway, &mut rand::rng()).await {
+    // StdRng (ChaCha12) seeded from the OS: a CSPRNG that, unlike ThreadRng, is Send.
+    let mut rng = StdRng::from_os_rng();
+    let winners = match cb.app.db.draw_winners(&giveaway, &mut rng).await {
         Ok(Draw::Winners(winners)) => winners,
         Ok(Draw::NoParticipants) => return stop(cb, &t("admin.no_participants", &[])).await,
         Err(error) => {
