@@ -44,7 +44,8 @@ async fn list(cb: &Cb<'_>) -> Result<()> {
         .enumerate()
         .map(|(i, (id, name))| {
             let name = name
-                .as_ref()
+                .as_deref()
+                .filter(|n| !n.is_empty())
                 .map_or("без username".into(), |n| format!("@{n}"));
             format!("{}. {name} (ID <code>{id}</code>)", i + 1)
         })

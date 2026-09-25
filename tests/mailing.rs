@@ -395,3 +395,93 @@ async fn mailings_run_one_at_a_time_in_order() {
     run_pending(&bot(&server), &db, &config).await.unwrap();
     assert!(db.mailing(second).await.unwrap().unwrap().finished);
 }
+
+#[tokio::test]
+async fn channel_post_interrupted_by_a_crash_is_not_repeated() {
+    let (dir, db) = db().await;
+    let server = server().await;
+    users(&db, [1]).await;
+    let id = db
+        .enqueue_mailing(&new(
+            MailingKind::Announce,
+            text("a"),
+            true,
+            Audience::Users,
+        ))
+        .await
+        .unwrap();
+    // The previous process started the channel post and died before recording its outcome.
+    db.next_mailing().await.unwrap();
+    db.begin_channel(id).await.unwrap();
+    run_pending(&bot(&server), &db, &config(dir.path()))
+        .await
+        .unwrap();
+    assert_eq!(chats(&server, "SendMessage").await, [1]);
+    assert_eq!(
+        report(&server).await,
+        "✅ Анонс отправлен!\n\n📊 Отправлено: 1"
+    );
+}
+
+#[tokio::test]
+async fn finished_sends_are_still_reported_after_a_crash() {
+    let (dir, db) = db().await;
+    let server = server().await;
+    users(&db, [1]).await;
+    let id = db
+        .enqueue_mailing(&new(
+            MailingKind::Broadcast,
+            text("x"),
+            false,
+            Audience::Users,
+        ))
+        .await
+        .unwrap();
+    // Every recipient was handled, but the process died before the report.
+    db.next_mailing().await.unwrap();
+    db.begin_send(id, 1).await.unwrap();
+    db.end_send(id, true).await.unwrap();
+    run_pending(&bot(&server), &db, &config(dir.path()))
+        .await
+        .unwrap();
+    assert!(chats(&server, "SendMessage").await.is_empty());
+    assert!(report(&server).await.contains("✉️ Отправлено: 1"));
+    assert!(db.mailing(id).await.unwrap().unwrap().finished);
+}
+
+#[tokio::test]
+async fn a_failed_report_edit_still_finishes_the_mailing() {
+    let (dir, db) = db().await;
+    let server = wiremock::MockServer::start().await;
+    Mock::given(method_is("EditMessageText"))
+        .respond_with(
+            ResponseTemplate::new(400)
+                .set_body_json(api_error(400, "Bad Request: message to edit not found")),
+        )
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(ok_message(1)))
+        .mount(&server)
+        .await;
+    users(&db, [1]).await;
+    let id = db
+        .enqueue_mailing(&new(
+            MailingKind::Broadcast,
+            text("x"),
+            false,
+            Audience::Users,
+        ))
+        .await
+        .unwrap();
+    run_pending(&bot(&server), &db, &config(dir.path()))
+        .await
+        .unwrap();
+    assert!(db.mailing(id).await.unwrap().unwrap().finished);
+    assert!(
+        !run_pending(&bot(&server), &db, &config(dir.path()))
+            .await
+            .unwrap()
+    );
+}

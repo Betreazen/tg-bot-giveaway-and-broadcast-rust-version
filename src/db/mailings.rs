@@ -151,8 +151,17 @@ impl Database {
         self.mailing(id).await
     }
 
-    pub async fn mark_channel(&self, id: i64, sent: bool) -> Result<()> {
-        sqlx::query("UPDATE mailings SET channel_done = 1, channel_sent = ? WHERE id = ?")
+    /// Recorded before the channel post, like `begin_send`: a crash never posts twice.
+    pub async fn begin_channel(&self, id: i64) -> Result<()> {
+        sqlx::query("UPDATE mailings SET channel_done = 1 WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn end_channel(&self, id: i64, sent: bool) -> Result<()> {
+        sqlx::query("UPDATE mailings SET channel_sent = ? WHERE id = ?")
             .bind(sent)
             .bind(id)
             .execute(&self.pool)
@@ -189,10 +198,12 @@ impl Database {
     }
 
     pub async fn end_send(&self, id: i64, delivered: bool) -> Result<()> {
-        let column = if delivered { "sent" } else { "failed" };
-        let sql =
-            format!("UPDATE mailings SET {column} = {column} + 1, in_flight = 0 WHERE id = ?");
-        sqlx::query(&sql).bind(id).execute(&self.pool).await?;
+        let sql = if delivered {
+            "UPDATE mailings SET sent = sent + 1, in_flight = 0 WHERE id = ?"
+        } else {
+            "UPDATE mailings SET failed = failed + 1, in_flight = 0 WHERE id = ?"
+        };
+        sqlx::query(sql).bind(id).execute(&self.pool).await?;
         Ok(())
     }
 

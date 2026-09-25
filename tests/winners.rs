@@ -163,3 +163,13 @@ async fn exec(db: &Database, sql: &str, value: i64) -> Result<(), sqlx::Error> {
         .await
         .map(|_| ())
 }
+
+#[test]
+fn empty_username_is_shown_as_id_like_python() {
+    let winner = Winner {
+        user_id: 7,
+        username_snapshot: Some(String::new()),
+        giveaway_end_snapshot: t0(),
+    };
+    assert_eq!(format_winner_list(&[winner]), "1. ID: 7");
+}

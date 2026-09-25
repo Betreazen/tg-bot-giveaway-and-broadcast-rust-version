@@ -603,3 +603,32 @@ async fn x1_sheets_button_reports_when_disabled() {
         ["⚠️ Синхронизация не выполнена (возможно, отключена или нет credentials)"]
     );
 }
+
+#[tokio::test]
+async fn a2_admin_command_addressed_to_another_bot_is_ignored() {
+    let admin = Admin::new().await;
+    wiremock::Mock::given(wiremock::matchers::path_regex("(?i)/getme$"))
+        .respond_with(
+            wiremock::ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ok": true, "result": {"id": 1, "is_bot": true, "first_name": "Bot",
+            "username": "test_bot", "can_join_groups": true,
+            "can_read_all_group_messages": false, "supports_inline_queries": false,
+            "can_connect_to_business": false, "has_main_web_app": false}})),
+        )
+        .with_priority(1)
+        .mount(&admin.server)
+        .await;
+    for text in ["/admin@OtherBot", "/admin@test_bot"] {
+        handle_message(
+            admin.bot.clone(),
+            group_text(ADMIN, text),
+            admin.app.clone(),
+        )
+        .await
+        .unwrap();
+    }
+    assert_eq!(
+        texts(&admin.server).await,
+        [t("admin.use_private_chat", &[])]
+    );
+}

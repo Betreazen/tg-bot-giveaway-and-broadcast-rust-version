@@ -44,7 +44,9 @@ impl App {
     }
 }
 
-/// Serialises updates per user so a double tap cannot race itself.
+/// Serialises updates per user so a double tap cannot race itself. teloxide already
+/// serialises updates per chat, but updates without a chat (a callback whose message is
+/// no longer accessible) go to its concurrent default worker; this lock covers those too.
 #[derive(Default)]
 struct UserLocks {
     entries: Mutex<HashMap<i64, Weak<AsyncMutex<()>>>>,
@@ -68,10 +70,25 @@ impl UserLocks {
     }
 }
 
-/// `/start join` → `start`, `/admin@bot` → `admin`.
-fn command(text: Option<&str>) -> Option<&str> {
+/// `/start join` → (`start`, None), `/admin@bot` → (`admin`, Some("bot")).
+fn command(text: Option<&str>) -> Option<(&str, Option<&str>)> {
     let word = text?.split_whitespace().next()?.strip_prefix('/')?;
-    word.split('@').next()
+    Some(match word.split_once('@') {
+        Some((name, bot)) => (name, Some(bot)),
+        None => (word, None),
+    })
+}
+
+/// In groups `/admin@OtherBot` belongs to another bot, as aiogram's Command filter decides.
+async fn addressed_to_us(bot: &Bot, mention: Option<&str>) -> Result<bool> {
+    let Some(mention) = mention else {
+        return Ok(true);
+    };
+    let me = bot.get_me().await?;
+    Ok(me
+        .username
+        .as_deref()
+        .is_some_and(|name| name.eq_ignore_ascii_case(mention)))
 }
 
 fn user_id(user: &teloxide::types::User) -> Result<i64> {
@@ -87,12 +104,14 @@ pub async fn handle_message(bot: Bot, msg: Message, app: Arc<App>) -> Result<()>
     let command = command(msg.text());
     if !msg.chat.is_private() {
         // Python answered /admin anywhere; everything else in groups is ignored (SPEC Δ5).
-        if command == Some("admin") {
+        if let Some(("admin", mention)) = command
+            && addressed_to_us(&bot, mention).await?
+        {
             admin::command_outside_private(&bot, &app, &msg, user).await?;
         }
         return Ok(());
     }
-    match command {
+    match command.map(|(name, _)| name) {
         Some("start") => user::start(&bot, &app, &msg, user).await,
         Some("admin") => admin::command(&bot, &app, &msg, user).await,
         _ => match app.db.load_dialogue(user).await? {

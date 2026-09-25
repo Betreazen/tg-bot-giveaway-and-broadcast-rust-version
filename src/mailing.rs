@@ -86,13 +86,36 @@ pub async fn run_pending(bot: &Bot, db: &Database, config: &Config) -> Result<bo
     let Some(mailing) = db.next_mailing().await? else {
         return Ok(false);
     };
-    let pause = Duration::from_secs_f64(1.0 / f64::from(mailing.rps));
     if mailing.to_channel && !mailing.channel_done {
+        db.begin_channel(mailing.id).await?;
         let sent = deliver(bot, config.channel_id, &mailing.content, config).await;
-        db.mark_channel(mailing.id, sent).await?;
+        db.end_channel(mailing.id, sent).await?;
     }
-    let mut cursor = mailing.cursor;
-    let mut done = mailing.sent + mailing.failed;
+    send_to_recipients(bot, db, config, &mailing).await?;
+    // Report before marking done: a crash in between repeats the edit, never loses it.
+    let counted = db
+        .mailing(mailing.id)
+        .await?
+        .context("mailing disappeared")?;
+    report(bot, &counted, config).await;
+    let finished = db.finish_mailing(mailing.id).await?;
+    tracing::info!(
+        mailing = finished.id,
+        sent = finished.sent,
+        failed = finished.failed,
+        "mailing finished"
+    );
+    Ok(true)
+}
+
+async fn send_to_recipients(
+    bot: &Bot,
+    db: &Database,
+    config: &Config,
+    mailing: &Mailing,
+) -> Result<()> {
+    let pause = Duration::from_secs_f64(1.0 / f64::from(mailing.rps));
+    let (mut cursor, mut done) = (mailing.cursor, mailing.sent + mailing.failed);
     tracing::info!(
         mailing = mailing.id,
         total = mailing.total,
@@ -100,9 +123,9 @@ pub async fn run_pending(bot: &Bot, db: &Database, config: &Config) -> Result<bo
         "mailing started"
     );
     loop {
-        let batch = recipients(db, &mailing, cursor).await?;
+        let batch = recipients(db, mailing, cursor).await?;
         if batch.is_empty() {
-            break;
+            return Ok(());
         }
         for chat in batch {
             db.begin_send(mailing.id, chat).await?;
@@ -121,15 +144,6 @@ pub async fn run_pending(bot: &Bot, db: &Database, config: &Config) -> Result<bo
             tokio::time::sleep(pause).await;
         }
     }
-    let finished = db.finish_mailing(mailing.id).await?;
-    tracing::info!(
-        mailing = finished.id,
-        sent = finished.sent,
-        failed = finished.failed,
-        "mailing finished"
-    );
-    report(bot, &finished, config).await;
-    Ok(true)
 }
 
 async fn recipients(db: &Database, mailing: &Mailing, after: Option<i64>) -> Result<Vec<i64>> {

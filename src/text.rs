@@ -59,16 +59,33 @@ fn catalogue() -> &'static Value {
 }
 
 /// Python's `t(key, **kwargs)`: dotted lookup plus `{name}` substitution.
+/// One pass over the template, like `str.format`: inserted values are never expanded.
 pub fn t(key: &str, args: &[(&str, &dyn Display)]) -> String {
-    let mut text = key
+    let template = key
         .split('.')
         .try_fold(catalogue(), |node, part| node.get(part))
         .and_then(Value::as_str)
-        .unwrap_or_else(|| panic!("missing message key {key}"))
-        .to_owned();
-    for (name, value) in args {
-        text = text.replace(&format!("{{{name}}}"), &value.to_string());
+        .unwrap_or_else(|| panic!("missing message key {key}"));
+    let mut text = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(open) = rest.find('{') {
+        text.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let value = after
+            .find('}')
+            .and_then(|close| Some((close, args.iter().find(|(n, _)| *n == &after[..close])?)));
+        match value {
+            Some((close, (_, value))) => {
+                text.push_str(&value.to_string());
+                rest = &after[close + 1..];
+            }
+            None => {
+                text.push('{');
+                rest = after;
+            }
+        }
     }
+    text.push_str(rest);
     text
 }
 

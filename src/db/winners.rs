@@ -2,7 +2,7 @@ use super::{Database, Giveaway};
 use crate::time::{Time, from_db, now, to_db};
 use anyhow::Result;
 use rand::Rng;
-use sqlx::{Sqlite, Transaction};
+use sqlx::SqliteExecutor;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Winner {
@@ -23,7 +23,7 @@ impl Database {
     /// Suspicious participants are removed from the pool; the draw is uniform among the rest.
     pub async fn draw_winners(&self, giveaway: &Giveaway, rng: &mut impl Rng) -> Result<Draw> {
         let mut tx = self.pool.begin().await?;
-        let existing = winners_in(&mut tx, giveaway.id).await?;
+        let existing = winners_in(&mut *tx, giveaway.id).await?;
         if !existing.is_empty() {
             return Ok(Draw::Winners(existing));
         }
@@ -57,24 +57,23 @@ impl Database {
             .execute(&mut *tx)
             .await?;
         }
-        let winners = winners_in(&mut tx, giveaway.id).await?;
+        let winners = winners_in(&mut *tx, giveaway.id).await?;
         tx.commit().await?;
         Ok(Draw::Winners(winners))
     }
 
     pub async fn winners(&self, giveaway_id: i64) -> Result<Vec<Winner>> {
-        let mut tx = self.pool.begin().await?;
-        winners_in(&mut tx, giveaway_id).await
+        winners_in(&self.pool, giveaway_id).await
     }
 }
 
-async fn winners_in(tx: &mut Transaction<'_, Sqlite>, giveaway_id: i64) -> Result<Vec<Winner>> {
+async fn winners_in(executor: impl SqliteExecutor<'_>, giveaway_id: i64) -> Result<Vec<Winner>> {
     let rows: Vec<(i64, Option<String>, String)> = sqlx::query_as(
         "SELECT user_id, username_snapshot, giveaway_end_snapshot FROM winners
          WHERE giveaway_id = ? ORDER BY id",
     )
     .bind(giveaway_id)
-    .fetch_all(&mut **tx)
+    .fetch_all(executor)
     .await?;
     rows.into_iter()
         .map(|(user_id, username_snapshot, end)| {
@@ -95,10 +94,12 @@ pub fn format_winner_list(winners: &[Winner]) -> String {
     winners
         .iter()
         .enumerate()
-        .map(|(i, w)| match &w.username_snapshot {
-            Some(name) => format!("{}. @{name}", i + 1),
-            None => format!("{}. ID: {}", i + 1, w.user_id),
-        })
+        .map(
+            |(i, w)| match w.username_snapshot.as_deref().filter(|n| !n.is_empty()) {
+                Some(name) => format!("{}. @{name}", i + 1),
+                None => format!("{}. ID: {}", i + 1, w.user_id),
+            },
+        )
         .collect::<Vec<_>>()
         .join("\n")
 }

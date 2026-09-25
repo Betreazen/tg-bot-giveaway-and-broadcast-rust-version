@@ -31,3 +31,15 @@ fn placeholders_are_substituted() {
         "🔐 Для завершения регистрации нажмите на кнопку <b>7</b>"
     );
 }
+
+#[test]
+fn substituted_values_are_not_expanded_again() {
+    // An admin's description may literally contain a placeholder name.
+    assert_eq!(
+        t(
+            "user.participation_confirmed",
+            &[("description", &"{num_winners} {x}"), ("num_winners", &2)]
+        ),
+        "🎉 Отлично! Теперь вы участвуете в розыгрыше!\n\n📝 {num_winners} {x}\n🏆 Победителей: 2"
+    );
+}
