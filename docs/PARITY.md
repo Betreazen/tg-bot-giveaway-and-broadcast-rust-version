@@ -1,122 +1,141 @@
 # Паритет с Python-версией
 
 Исходник: [tg-bot-giveaway-and-broadcast](https://github.com/Betreazen/tg-bot-giveaway-and-broadcast),
-коммит `9a4c9c6` (то, что работает в production). Ссылки ниже — пути в том репозитории.
-Колонка «Rust-тест» заполняется по мере реализации.
+коммит `9a4c9c6` (версия, работавшая в production). Ссылки ниже — `файл::функция` в том
+репозитории; Rust-тесты — `tests/<файл>.rs::<тест>`.
 
-Условные обозначения: **=** — поведение повторяется один в один; **≈** — то же для
-пользователя, но иначе внутри; **Δ** — осознанное отличие (см. раздел в конце).
+**=** — поведение то же самое; **≈** — то же для пользователя, но устроено иначе;
+**Δ** — осознанное отличие (таблица в конце и [SPEC.md](SPEC.md) §10).
 
 ## 1. Участник: `/start` и верификация
 
-| # | Поведение | Python | Py-тест | Паритет | Rust-тест |
+| # | Поведение | Python | Py-тест | | Rust-тест |
 |---|---|---|---|---|---|
-| U1 | `/start` (с любым payload, напр. `?start=join`) сохраняет пользователя: upsert `user_id`, username перезаписывается только новым не-NULL значением | `handlers/start.py:59`, `db/repo/user_repo.py:417` | — | = | |
-| U2 | Не подписан на `CHANNEL_ID` (`getChatMember` не `creator/administrator/member`, либо любая ошибка API) → `user.not_subscribed` | `services/subscription.py:376` | — | = | |
-| U3 | Нет розыгрыша с `is_active=true` → `user.no_active_giveaway` | `handlers/start.py:72` | — | = | |
-| U4 | Уже участник → `user.already_participating` | `handlers/start.py:80` | — | = | |
-| U5 | Админ (из `ADMIN_IDS`) участвует сразу, без верификации и без проверки username → `user.participation_confirmed` | `handlers/start.py:88` | — | = | |
-| U6 | Нет `@username` → `user.no_username`, участие не создаётся | `handlers/start.py:108` | — | = | |
-| U7 | Заблокирован для этого розыгрыша → `user.verification_blocked` | `handlers/start.py:115` | — | = | |
-| U8 | Уже идёт верификация (< 180 с) → `user.verification_in_progress`; истекла → начать заново | `handlers/start.py:124` | — | = | |
-| U9 | Попыток ≥ 3 → блок и `user.verification_blocked` | `handlers/start.py:138` | — | = | |
-| U10 | Верификация: 5 разных цифр 0–9, одна верная, клавиатура 3+2, `callback_data=verify:<n>`, текст `user.verification_prompt` | `handlers/verification.py:203-248` | `test_verification.py` | = | |
-| U11 | Верная кнопка → участие (idempotent `ON CONFLICT DO NOTHING`), сообщение редактируется в `user.participation_confirmed` | `handlers/verification.py:296` | — | = | |
-| U12 | Неверная → попытка +1 (счётчик per giveaway+user переживает новые сессии); кнопки перемешиваются; `user.verification_wrong` с остатком | `handlers/verification.py:331-360` | — | = | |
-| U13 | 3-я неверная → блок до конца этого розыгрыша (новый розыгрыш — новые попытки), сообщение `user.verification_blocked` | `handlers/verification.py:337` | — | = | |
-| U14 | Нажатие после 180 с → alert `user.verification_timeout`, состояние сброшено | `handlers/verification.py:289` | — | = | |
-| U15 | Нажатие `verify:` без активной верификации — игнор | router filter | — | ≈ (callback гасится без текста) | |
-| U16 | Ошибка в обработчике → `errors.generic` | `handlers/start.py:169` | — | = | |
-| U17 | Прочие сообщения пользователя вне мастеров — без ответа | aiogram default | — | = | |
+| U1 | `/start` (с любым payload) сохраняет пользователя; username перезаписывается только новым не-NULL значением | `handlers/start.py::start_handler`, `db/repo/user_repo.py::create_or_update_user` | — | = | `user_flow::u1_*` |
+| U2 | Не подписан на `CHANNEL_ID` (статус не creator/administrator/member или ошибка API) → `user.not_subscribed` | `services/subscription.py::check_subscription` | — | = | `user_flow::u2_*` |
+| U3 | Нет активного розыгрыша → `user.no_active_giveaway` | `start_handler` | — | = | `user_flow::u3_*` |
+| U4 | Уже участник → `user.already_participating` | `start_handler` | — | = | `user_flow::u4_*` |
+| U5 | Админ участвует сразу, без верификации и username | `start_handler` | — | = | `user_flow::u5_*` |
+| U6 | Нет `@username` → `user.no_username` | `start_handler` | — | = | `user_flow::u6_*` |
+| U7 | Заблокирован для этого розыгрыша → `user.verification_blocked` | `start_handler` | — | ≈ | `user_flow::u7_u9_*` |
+| U8 | Верификация идёт (< 180 с) → `user.verification_in_progress`; истекла → заново | `start_handler` | — | = | `user_flow::u8_u10_*` |
+| U9 | Попыток ≥ 3 → блок | `start_handler` | — | = | `user_flow::u7_u9_*` |
+| U10 | 5 разных цифр 0–9, одна верная, клавиатура 3+2, `verify:<n>` | `handlers/verification.py::generate_verification_*` | `test_verification.py` | = | `user_flow::u8_u10_*` |
+| U11 | Верная кнопка → участие (idempotent), сообщение → `user.participation_confirmed` | `verification.py::verification_callback` | — | = | `user_flow::u11_*` |
+| U12 | Неверная → попытка +1 (per розыгрыш+пользователь), кнопки перемешаны, `user.verification_wrong` | `verification_callback` | — | = | `user_flow::u12_u13_*` |
+| U13 | 3-я неверная → блок на этот розыгрыш; счётчик переживает рестарт | `verification_callback` | — | = (Δ14) | `user_flow::u12_u13_*` |
+| U14 | Нажатие после 180 с → alert `user.verification_timeout` | `verification_callback` | — | = | `user_flow::u14_*` |
+| U15 | `verify:` без активной верификации | фильтр состояния | — | ≈ (Δ6) | `user_flow::u15_*` |
+| U16 | Внутренняя ошибка → `errors.generic` | `start_handler` | — | = | `user_flow::u16_*` |
+| U17 | Прочие сообщения — без ответа; группы (кроме `/admin`) | aiogram | — | = / Δ5 | `user_flow::u17_*` |
 
 ## 2. Админ: доступ и меню
 
-| # | Поведение | Python | Py-тест | Паритет | Rust-тест |
+| # | Поведение | Python | Py-тест | | Rust-тест |
 |---|---|---|---|---|---|
-| A1 | Любой админский хендлер от не-админа → `admin.access_denied` (сообщение, у callback — alert) | `middlewares/admin.py` | `test_admin_middleware.py` | = | |
-| A2 | `/admin` не в личке → `admin.use_private_chat` | `handlers/admin/entry.py:99` | — | = | |
-| A3 | Главное меню: «Создать», [«Объявить», «Завершить/Победители» — только при активном], «Рассылка», «Статус», «Подозрительные», «Синхронизация Google Sheets», «Закрыть» | `keyboards/admin.py:600` | — | = | |
-| A4 | «Закрыть» удаляет сообщение меню | `entry.py:118` | — | = | |
-| A5 | «Статус»: нет активного → alert `admin.status_no_active`; иначе новое сообщение `admin.status_active` (конец — `%Y-%m-%d %H:%M` МСК, без метки) | `menu.py:146` | — | = | |
-| A6 | «Главное меню» из любого мастера сбрасывает состояние и показывает меню | `giveaway_wizard.py:745` | — | = | |
-| A7 | «Отменить» (`nav:cancel`) в любом состоянии → `admin.operation_cancelled`, состояние сброшено | `giveaway_wizard.py:735` | — | = | |
-| A8 | Время всегда хранится в UTC, показывается по МСК (UTC+3, без перехода на летнее) | `utils/datetimes.py` | `test_datetimes.py` | = | |
+| A1 | Админский хендлер от не-админа → `admin.access_denied` (у callback — alert) | `middlewares/admin.py` | `test_admin_middleware.py` | = (Δ15) | `admin_giveaway::a1_*` |
+| A2 | `/admin` не в личке → `admin.use_private_chat`; `/admin@ДругойБот` — не нам | `handlers/admin/entry.py::admin_command_handler` | — | = | `admin_giveaway::a2_*` |
+| A3 | Меню: «Создать», [«Объявить», «Завершить» при активном], «Рассылка», «Статус», «Подозрительные», «Sheets», «Закрыть» | `keyboards/admin.py::get_admin_main_menu` | — | = | `admin_giveaway::a3_*` |
+| A4 | «Закрыть» удаляет сообщение | `entry.py::close_admin_panel` | — | = | `admin_giveaway::a4_*` |
+| A5 | «Статус»: alert или новое сообщение `admin.status_active` | `menu.py::show_status` | — | = | `admin_giveaway::a5_*` |
+| A6 | «Главное меню» сбрасывает состояние | `giveaway_wizard.py::return_to_main_menu` | — | = | `admin_giveaway::a6_a7_*` |
+| A7 | «Отменить» → `admin.operation_cancelled` | `giveaway_wizard.py::cancel_wizard` | — | = | `admin_giveaway::a6_a7_*` |
+| A8 | Хранение UTC, показ МСК (UTC+3) | `utils/datetimes.py` | `test_datetimes.py` | = | `time::*` |
 
 ## 3. Мастер создания розыгрыша
 
-| # | Поведение | Python | Py-тест | Паритет | Rust-тест |
+| # | Поведение | Python | Py-тест | | Rust-тест |
 |---|---|---|---|---|---|
-| G1 | Старт: «Когда начать?» — Сейчас / +1 ч / +3 ч / +6 ч / Завтра 12:00 МСК | `date_picker.py:248`, `giveaway_wizard.py:354` | — | = | |
-| G2 | Длительность: 1/3/7/14/30 дней; даты считаются в МСК и сохраняются в UTC в момент выбора длительности | `date_picker.py:225,271` | — | = | |
-| G3 | Описание: только текст, > 4096 символов → `wizard.description_too_long` | `giveaway_wizard.py:419` | — | = | |
-| G4 | Число победителей: целое ≥ 1, иначе `wizard.invalid_winner_count` | `giveaway_wizard.py:439` | — | = | |
-| G5 | Медиа обязательно: фото (наибольшее), видео, GIF (animation), документ; иначе `wizard.invalid_media` | `giveaway_wizard.py:464` | — | = | |
-| G6 | Предпросмотр с датами (`%d.%m.%Y %H:%M МСК`, длительность в днях), победителями, описанием, типом медиа | `date_picker.py:305`, `giveaway_wizard.py:499` | — | = | |
-| G7 | «Редактировать» → снова ввод описания (без «Назад») | `giveaway_wizard.py:558` | — | = | |
-| G8 | «Подтвердить»: все активные розыгрыши деактивируются, создаётся новый активный | `giveaway_wizard.py:512` | — | = | |
-| G9 | Анонс после создания: канал / всем пользователям / везде / пропустить; кнопка «🎁 Участвовать» → `JOIN_URL`; итог «Отправлено: N» (канал считается за 1) | `giveaway_wizard.py:573` | — | ≈ (рассылка через очередь, см. Δ2) | |
-| G10 | «Назад» на каждом шаге до медиа включительно ведёт на предыдущий шаг; с первого шага — в меню | `giveaway_wizard.py:654-732` | — | = | |
-| G11 | Неизвестный `start_time` → «сейчас» | `date_picker.py:295` | — | = | |
+| G1 | Старт: Сейчас / +1 ч / +3 ч / +6 ч / Завтра 12:00 МСК | `date_picker.py::get_start_time_keyboard` | — | = | `admin_giveaway::g1_to_g8_*` |
+| G2 | Длительность 1/3/7/14/30 дней, даты в МСК → UTC | `date_picker.py::calculate_dates` | — | = | `time::start_options_*`, `g1_to_g8_*` |
+| G3 | Описание > 4096 символов → `wizard.description_too_long` | `giveaway_wizard.py::process_description` | — | = | `g1_to_g8_*` |
+| G4 | Победителей — целое ≥ 1 | `process_winner_count` | — | = | `g1_to_g8_*` |
+| G5 | Медиа: фото (наибольшее), видео, GIF, документ | `process_media` | — | = | `g1_to_g8_*`, `g5_*` |
+| G6 | Предпросмотр с датами, победителями, описанием, типом медиа | `process_media`, `format_dates_display` | — | = | `g1_to_g8_*`, `time::dates_display_*` |
+| G7 | «Редактировать» → описание без «Назад» | `edit_giveaway` | — | = | `g7_*` |
+| G8 | «Подтвердить»: прочие деактивируются, новый активен | `confirm_creation` | — | = (Δ4) | `g1_to_g8_*`, `database::creating_*` |
+| G9 | Анонс после создания: канал / пользователи / везде / пропустить | `handle_announce_target` | — | ≈ (Δ2) | `g1_to_g8_*`, `g9_*`, `mailing::announce_*` |
+| G10 | «Назад» на каждом шаге; с первого — в меню | `back_from_*` | — | = (Δ11) | `g10_*` |
+| G11 | Неизвестный вариант старта → «сейчас» | `calculate_dates` | — | = | `time::start_options_*` |
 
 ## 4. Анонс активного розыгрыша
 
-| # | Поведение | Python | Py-тест | Паритет | Rust-тест |
+| # | Поведение | Python | Py-тест | | Rust-тест |
 |---|---|---|---|---|---|
-| N1 | Нет активного → alert «Нет активного розыгрыша для анонсирования» | `announce.py:799` | — | = | |
-| N2 | Экран с описанием, победителями, «⏰ До: … МСК», выбор канал/пользователи/везде/отмена | `announce.py:806` | — | = | |
-| N3 | Отправка: тот же текст и медиа, что при создании; итог «✅ Анонс отправлен! Отправлено: N» | `announce.py:827` | — | ≈ (Δ2) | |
+| N1 | Нет активного → alert | `announce.py::announce_giveaway` | — | = | `n1_to_n3_*` |
+| N2 | Экран «Анонсирование», «⏰ До: … МСК» | `announce_giveaway` | — | = | `n1_to_n3_*` |
+| N3 | Отправка, итог «Отправлено: N» | `handle_manual_announce` | — | ≈ (Δ2) | `n1_to_n3_*`, `mailing::channel_only_*` |
 
 ## 5. Завершение и победители
 
-| # | Поведение | Python | Py-тест | Паритет | Rust-тест |
+| # | Поведение | Python | Py-тест | | Rust-тест |
 |---|---|---|---|---|---|
-| W1 | Нет активного → alert «Нет активного розыгрыша» | `winners.py:38` | — | = | |
-| W2 | Подтверждение «Завершить сейчас?» → `ended_at=now`, `is_active=false` | `winners.py:57`, `giveaway_repo.py:232` | — | = | |
-| W3 | «Нет, продолжить» → «❌ Отменено» | `winners.py:88` | — | = | |
-| W4 | Выбор: случайно среди участников, **подозрительные исключены**, число = min(N, легитимных); без легитимных → `admin.no_participants` | `services/giveaway_service.py:427` | `test_giveaway_service.py` | ≈ (Δ3: криптостойкий RNG, повторный выбор невозможен) | |
-| W5 | Снимки победителя: username участника, `giveaway_end_snapshot = ended_at или end_at` | `giveaway_service.py:472-485` | `test_select_winners_uses_ended_at_snapshot` | = | |
-| W6 | Список: `N. @username` или `N. ID: <id>`; пустой → `No winners` | `giveaway_service.py:492` | `test_format_winner_list_*` | = | |
-| W7 | Публикация: канал / только админам (с `ANNOUNCE_RPS`) / пользователям (с `BROADCAST_RPS`) / везде; текст результатов с «📞 С победителями свяжутся…» | `winners.py:146` | — | ≈ (Δ2) | |
+| W1 | Нет активного → alert | `winners.py::start_complete_giveaway` | — | = | `w1_to_w7_*` |
+| W2 | Подтверждение → `ended_at`, неактивен | `confirm_end_giveaway` | — | = | `w1_to_w7_*` |
+| W3 | «Нет, продолжить» → «❌ Отменено» | `cancel_end_giveaway` | — | = | `w1_to_w7_*` |
+| W4 | Случайно среди участников без подозрительных, min(N, легитимных) | `giveaway_service.py::select_winners` | `test_giveaway_service.py` | ≈ (Δ3) | `winners::*`, `w4_*` |
+| W5 | Снимки username и `ended_at`/`end_at` | `select_winners` | `test_select_winners_uses_ended_at_snapshot` | = | `winners::snapshot_*` |
+| W6 | `N. @username` / `N. ID: <id>` / `No winners` | `format_winner_list` | `test_format_winner_list_*` | = | `winners::winner_list_*`, `empty_username_*` |
+| W7 | Публикация: канал / админам / пользователям / везде | `publish_results` | — | ≈ (Δ2, Δ13) | `w1_to_w7_*`, `w7_*`, `mailing::results_*` |
 
 ## 6. Рассылка
 
-| # | Поведение | Python | Py-тест | Паритет | Rust-тест |
+| # | Поведение | Python | Py-тест | | Rust-тест |
 |---|---|---|---|---|---|
-| B1 | Тип: только текст / медиа + подпись | `broadcast_wizard.py:235-276` | — | = | |
-| B2 | Текст > 4096 → «❌ Текст слишком длинный (максимум 4096 символов)» | `broadcast_wizard.py:285` | — | = | |
-| B3 | Медиа: фото/видео/GIF/документ + необязательная подпись; предпросмотр с типом, подписью или «(нет)», числом символов | `broadcast_wizard.py:303` | — | = | |
-| B4 | «Редактировать» → повтор ввода по типу | `broadcast_wizard.py:398` | — | = | |
-| B5 | Подтверждение → всем пользователям из `users`; пусто → «❌ В базе нет пользователей для рассылки»; итог: всего/отправлено/не доставлено/длительность | `broadcast_wizard.py:345` | — | ≈ (Δ2) | |
-| B6 | Отправка с паузой `1/RPS`; 429 → ждать `retry_after` и повторить; 403 → «не доставлено» (blocked); прочие ошибки → «не доставлено» | `services/mailing.py:548` | `test_mailing.py` | ≈ (Δ2: повторы до `MAX_RETRIES`) | |
-| B7 | Текст рассылок, описаний и анонсов отправляется с `parse_mode=HTML` как есть (админ может писать `<b>`) | `main.py:73` | — | = | |
+| B1 | Тип: текст / медиа + подпись | `broadcast_wizard.py::start_broadcast` | — | = | `admin_broadcast::b1_b2_b5_*` |
+| B2 | Текст > 4096 → отказ | `process_broadcast_text` | — | = | `b1_b2_b5_*` |
+| B3 | Медиа + подпись, предпросмотр | `process_broadcast_media` | — | = | `b3_*` |
+| B4 | «Редактировать» | `edit_broadcast` | — | = | `b3_*`, `b4_*` |
+| B5 | Всем пользователям; пусто → «❌ В базе нет пользователей…»; итог | `confirm_broadcast` | — | ≈ (Δ2) | `b1_b2_b5_*`, `b4_*`, `mailing::broadcast_*` |
+| B6 | Пауза `1/RPS`; 429 → ждать и повторить; 403 → не доставлено | `services/mailing.py::send_mass_message` | `test_mailing.py` | ≈ (Δ2, Δ9) | `mailing::*` |
+| B7 | `parse_mode=HTML`, текст админа как есть | `main.py` | — | = | `mailing::media_is_sent_*` |
 
 ## 7. Подозрительные аккаунты
 
-| # | Поведение | Python | Py-тест | Паритет | Rust-тест |
+| # | Поведение | Python | Py-тест | | Rust-тест |
 |---|---|---|---|---|---|
-| S1 | Меню: пометить / снять / список / главное меню | `suspicious.py:460`, `keyboards/admin.py:642` | — | = | |
-| S2 | Ввод username в любом виде: `@name`, `t.me/name`, `https://t.me/name?x`, `name`; 4–32 символа `[A-Za-z0-9_]`, регистр не важен | `utils/usernames.py` | `test_usernames.py` | = | |
-| S3 | Не распознан → сообщение об ошибке + меню; не найден в `users` → «⚠️ … не найден в базе» | `suspicious.py:541` | — | = | |
-| S4 | Список: сортировка по username, затем id; `@name` или «без username», ID в `<code>`; страницы ≤ 3800 символов, первая — редактированием меню | `suspicious.py:470-512` | `test_suspicious_list.py` | = | |
-| S5 | Пользователю пометка не видна никак | — | — | = | |
+| S1 | Меню: пометить / снять / список / главное меню | `suspicious.py::suspicious_menu` | — | = | `admin_broadcast::s1_s2_s3_*` |
+| S2 | Username в любом виде | `utils/usernames.py::parse_username` | `test_usernames.py` | = | `usernames::*` |
+| S3 | Не распознан / не найден | `suspicious.py::_apply` | — | = | `s1_s2_s3_*` |
+| S4 | Список по username, страницы ≤ 3800 | `list_suspicious`, `_paginate` | `test_suspicious_list.py` | = (Δ12) | `s4_*`, `paginate_*` |
+| S5 | Пользователь пометку не видит | — | — | = | — |
 
 ## 8. Google Sheets
 
-| # | Поведение | Python | Py-тест | Паритет | Rust-тест |
+| # | Поведение | Python | Py-тест | | Rust-тест |
 |---|---|---|---|---|---|
-| X1 | Кнопка в меню всегда; при `SHEETS_SYNC_ENABLED=false` → alert «Синхронизация начата...» и «⚠️ Синхронизация не выполнена (возможно, отключена или нет credentials)» | `menu.py:185`, `services/sheets_sync.py:276` | `test_settings.py` | см. решение в спецификации | |
-| X2 | При включении: листы Overview, Users, Participants, Winners, Giveaways Summary полностью перезаписываются | `sheets_sync.py:85-273` | `test_sheets_format.py` | см. решение в спецификации | |
+| X1 | Кнопка всегда; toast «Синхронизация начата...», итог новым сообщением | `menu.py::sync_google_sheets` | `test_settings.py` | = (Δ16) | `admin_giveaway::x1_*`, `sheets::sync_all_skips_*` |
+| X2 | 5 листов полностью перезаписываются | `services/sheets_sync.py` | `test_sheets_format.py` | = (Δ16) | `sheets::sync_rewrites_all_five_sheets` |
 
-## 9. Конфигурация и эксплуатация
+## 9. Конфигурация
 
-| # | Поведение | Python | Py-тест | Паритет | Rust-тест |
+| # | Поведение | Python | Py-тест | | Rust-тест |
 |---|---|---|---|---|---|
-| C1 | `ADMIN_IDS` через запятую с пробелами | `config/settings.py:62` | `test_settings.py` | = | |
-| C2 | `CHANNEL_ID` — целое (`-100…`) | `settings.py:27` | `test_settings.py` | = | |
-| C3 | Значения по умолчанию: `BROADCAST_RPS=20`, `ANNOUNCE_RPS=20`, `MAX_RETRIES=5`, `LOG_LEVEL=INFO` | `settings.py:43-53` | `test_settings.py` | = | |
-| C4 | `DATABASE_URL`, `REDIS_URL`, `REDIS_FSM_PREFIX`, `DB_POOL_SIZE`, `DB_MAX_OVERFLOW` | `settings.py` | — | Δ (не нужны: SQLite в `DATA_DIR`) | |
-| C5 | `admin_drafts` и `draft_repo` — мёртвый код (нигде не вызывается), таблица пуста | `db/repo/draft_repo.py` | — | Δ (таблица не переносится) | |
+| C1 | `ADMIN_IDS` через запятую с пробелами | `config/settings.py` | `test_settings.py` | = | `config::admin_ids_*` |
+| C2 | `CHANNEL_ID` — целое | `settings.py` | `test_settings.py` | = | `config::channel_id_*` |
+| C3 | Значения по умолчанию RPS 20/20, `MAX_RETRIES` 5 | `settings.py` | `test_settings.py` | = | `config::defaults_*` |
+| C4 | `DATABASE_URL`, `REDIS_*`, `DB_POOL_*` | `settings.py` | — | Δ | — |
+| C5 | `admin_drafts` — мёртвый код, пустая таблица | `db/repo/draft_repo.py` | — | Δ | — |
 
-## Осознанные отличия (Δ)
+## Осознанные отличия
 
-Заполняется по итогам утверждённой спецификации — см. `docs/SPEC.md`.
+Полный список с причинами — [SPEC.md](SPEC.md) §10. Кратко:
+
+| # | Отличие |
+|---|---|
+| Δ1 | Состояния мастеров и верификации в SQLite, переживают рестарт; Redis-сессии при переключении теряются |
+| Δ2 | Рассылки — фоновая очередь с прогрессом в БД, без дублей после рестарта; 429 повторяется до `MAX_RETRIES` |
+| Δ3 | Победители — CSPRNG; повторный выбор возвращает уже выбранных |
+| Δ4 | Два активных розыгрыша запрещены на уровне БД |
+| Δ5 | `/start` и мастера только в личке |
+| Δ6 | Callback без обработчика гасится без текста |
+| Δ7 | «Назад» в мастере рассылки и при вводе username возвращает на экран назад |
+| Δ8 | Лог — journald, `ADMIN_IDS`/`CHANNEL_ID` не логируются |
+| Δ9 | Пауза `1/RPS` после каждой попытки, в том числе неудачной и последней |
+| Δ10 | `/start` и `/admin` во время мастера — команды, а не ввод мастера |
+| Δ11 | «Назад» с первого шага мастера показывает меню с учётом активного розыгрыша |
+| Δ12 | Список подозрительных сортируется бинарно (SQLite), Postgres — по collation |
+| Δ13 | Повторяющиеся id в `ADMIN_IDS` получают результаты один раз |
+| Δ14 | Блок верификации не истекает через 30 дней (привязан к розыгрышу) |
+| Δ15 | Не-админ, нажавший устаревшую админскую кнопку, видит «доступ запрещён» |
+| Δ16 | Sheets: сбой любого листа → «⚠️ не выполнена»; повторное нажатие во время синхронизации ждёт её итога |
