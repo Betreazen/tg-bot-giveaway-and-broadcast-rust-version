@@ -1,0 +1,16 @@
+# internal, not for publication
+/CLAUDE.md
+/START_PROMPT.md
+/DEPLOY_NOTES.md
+/docs/PROGRESS.md
+
+# build
+/target
+/dist
+
+# secrets and data
+.env
+*.db
+*.db-shm
+*.db-wal
+service_account.json
