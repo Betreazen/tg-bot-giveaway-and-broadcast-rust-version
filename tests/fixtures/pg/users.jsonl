@@ -1,0 +1,5 @@
+{"user_id":1001,"username":"alice","joined_at":"2025-11-02T10:15:30.123456+00:00","is_suspicious":false}
+{"user_id":1002,"username":null,"joined_at":"2025-11-03T08:00:00+00:00","is_suspicious":false}
+
+{"user_id":1003,"username":"Борис_77","joined_at":"2025-11-04T21:30:05.5+00:00","is_suspicious":true}
+{"user_id":5000000001,"username":"o'neil \"quoted\"","joined_at":"2025-12-01T00:00:00.12+00:00","is_suspicious":false}

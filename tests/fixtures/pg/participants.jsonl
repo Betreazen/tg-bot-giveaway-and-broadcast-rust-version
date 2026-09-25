@@ -1,0 +1,4 @@
+{"id":10,"giveaway_id":3,"user_id":1001,"joined_at":"2025-11-10T09:05:00.25+00:00","username_snapshot":"alice","giveaway_end_snapshot":"2025-11-17T09:00:00+00:00"}
+{"id":11,"giveaway_id":3,"user_id":1002,"joined_at":"2025-11-10T10:00:00+00:00","username_snapshot":null,"giveaway_end_snapshot":"2025-11-17T09:00:00+00:00"}
+{"id":12,"giveaway_id":3,"user_id":1003,"joined_at":"2025-11-11T00:00:00.999999+00:00","username_snapshot":"Борис_77","giveaway_end_snapshot":"2025-11-17T09:00:00+00:00"}
+{"id":15,"giveaway_id":7,"user_id":1001,"joined_at":"2025-12-02T00:00:00+00:00","username_snapshot":"alice","giveaway_end_snapshot":"2025-12-08T12:00:00+00:00"}
