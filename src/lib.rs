@@ -1,6 +1,7 @@
 pub mod config;
 pub mod db;
 pub mod import;
+pub mod mailing;
 pub mod network;
 pub mod sheets;
 pub mod state;

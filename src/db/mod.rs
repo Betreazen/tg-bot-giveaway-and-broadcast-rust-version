@@ -1,9 +1,11 @@
 mod dialogues;
 mod giveaways;
+mod mailings;
 mod users;
 mod winners;
 
 pub use giveaways::{Giveaway, NewGiveaway};
+pub use mailings::{Audience, Content, Mailing, MailingKind, NewMailing};
 pub use winners::{Draw, Winner, format_winner_list};
 
 use anyhow::{Result, ensure};

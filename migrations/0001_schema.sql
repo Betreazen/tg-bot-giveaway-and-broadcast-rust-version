@@ -61,4 +61,29 @@ CREATE TABLE IF NOT EXISTS dialogues (
     updated_at TEXT NOT NULL
 );
 
+-- Announcements, results and broadcasts. One worker runs them in id order; the cursor
+-- and counters survive restarts. `in_flight` marks a send that may or may not have
+-- reached Telegram: after a crash it is counted as failed and never repeated.
+CREATE TABLE IF NOT EXISTS mailings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    content TEXT NOT NULL,
+    to_channel INTEGER NOT NULL,
+    audience TEXT NOT NULL,
+    rps INTEGER NOT NULL CHECK (rps > 0),
+    report_chat INTEGER NOT NULL,
+    report_message INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'running', 'done')),
+    channel_done INTEGER NOT NULL DEFAULT 0,
+    channel_sent INTEGER NOT NULL DEFAULT 0,
+    cursor INTEGER,
+    in_flight INTEGER NOT NULL DEFAULT 0,
+    total INTEGER NOT NULL,
+    sent INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT
+);
+
 PRAGMA user_version = 1;
