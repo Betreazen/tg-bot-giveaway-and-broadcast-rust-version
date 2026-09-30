@@ -97,14 +97,15 @@ cargo audit
 
 ## Потребление ресурсов
 
-Python-версия на production-сервере (2026-09-25, cgroup v2), в простое:
+Один production-сервер, те же данные, простой; 2026-09-30 (cgroup v2):
 
-| Контейнер | Память сейчас | Пик | Средний CPU |
-|---|---|---|---|
-| бот | 66 MiB | 202 MiB | 0.013 % |
-| PostgreSQL | 13–18 MiB | 34 MiB | 0.42 % |
-| Redis | 7 MiB | 18 MiB | 0.90 % |
-| **Итого** | **~86 MiB** | | **~1.33 % ядра** |
+| | Python + PostgreSQL + Redis (Docker) | Rust + SQLite (systemd) |
+|---|---|---|
+| Память (cgroup) | 57.4 MiB, плюс 167 MiB в swap | 1.4 MiB, swap 0 |
+| Пик памяти | 203 + 34.5 + 18.3 MiB | 2.1 MiB |
+| Средний CPU | 1.34 % ядра, из них Redis 0.91 %, PostgreSQL 0.42 % | после суточного замера |
+| Процессы | 3 контейнера, 18 PID | 1 процесс, 3 потока |
+| На диске | ≈ 2.6 GB образов + 74 MB томов | бинарник 11 MB + база 3.6 MB |
 
-Замер Rust-версии на том же сервере появится после переключения
-(методика — как у [бота опросов](https://github.com/Betreazen/tg-bot-bug-opros-rust-version/blob/main/docs/BENCHMARK.md)).
+Памяти по cgroup уходит примерно в 40 раз меньше. Главная экономия CPU — отказ от Redis
+и PostgreSQL. Методика и подробности — [docs/BENCHMARK.md](docs/BENCHMARK.md).
